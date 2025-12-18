@@ -1,0 +1,69 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  BUILD_PATH: "publish_output"
+
+build-dev:
+  tags:
+    - YOUR_GITLAB_RUNNER    #-----> This side is your Gitlab Runner name. If you dont have, you need first install Gitlab runner from IIS server 
+  stage: build
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  script:
+    - echo "Building project for Development..."
+    - $env:ASPNETCORE_ENVIRONMENT="Development"
+    - dotnet publish -c Release -o $BUILD_PATH /p:EnvironmentName=Development
+  artifacts:
+    paths:
+      - $BUILD_PATH
+
+build-prod:
+  tags:
+    - YOUR_GITLAB_RUNNER    #-----> This side is your Gitlab Runner name. If you dont have, you need first install Gitlab runner from IIS server 
+  stage: build
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "prod"'
+  script:
+    - echo "Building project for Production..."
+    - $env:ASPNETCORE_ENVIRONMENT="Production"
+    - dotnet publish -c Release -o $BUILD_PATH /p:EnvironmentName=Production
+  artifacts:
+    paths:
+      - $BUILD_PATH
+
+deploy:dev:
+  tags:
+    - YOUR_GITLAB_RUNNER    #-----> This side is your Gitlab Runner name. If you dont have, you need first install Gitlab runner from IIS server 
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  variables:
+    ASPNETCORE_ENVIRONMENT: "Development"
+    DEPLOY_PATH: "C:\\inetpub\\wwwroot\\testapi.example.com"    #-----> This side is your in IIS server test api address
+  script:
+    - powershell.exe -Command "Write-Host 'Deploying Development Build...'"
+    - powershell.exe -Command "Stop-Service -Name 'W3SVC' -Force"
+    - powershell.exe -Command "if (Test-Path '$env:DEPLOY_PATH') { Remove-Item -Recurse -Force '$env:DEPLOY_PATH\\*' } else { New-Item -ItemType Directory -Path '$env:DEPLOY_PATH' }"
+    - powershell.exe -Command "Copy-Item -Recurse -Force '$env:BUILD_PATH\\*' '$env:DEPLOY_PATH'"
+    - powershell.exe -Command "Start-Service -Name 'W3SVC'"
+  needs: ["build-dev"]
+
+deploy:prod:
+  tags:
+    - YOUR_GITLAB_RUNNER
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "prod"'
+      when: manual
+  variables:
+    ASPNETCORE_ENVIRONMENT: "Production"
+    DEPLOY_PATH: "C:\\inetpub\\wwwroot\\api.example.com"   #-----> This side is your in IIS server live api address
+  script:
+    - powershell.exe -Command "Write-Host 'Deploying Production Build...'"
+    - powershell.exe -Command "Stop-Service -Name 'W3SVC' -Force"
+    - powershell.exe -Command "if (Test-Path '$env:DEPLOY_PATH') { Remove-Item -Recurse -Force '$env:DEPLOY_PATH\\*' } else { New-Item -ItemType Directory -Path '$env:DEPLOY_PATH' }"
+    - powershell.exe -Command "Copy-Item -Recurse -Force '$env:BUILD_PATH\\*' '$env:DEPLOY_PATH'"
+    - powershell.exe -Command "Start-Service -Name 'W3SVC'"
+  needs: ["build-prod"]
